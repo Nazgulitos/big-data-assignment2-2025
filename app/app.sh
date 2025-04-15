@@ -1,26 +1,32 @@
-#!/bin/bash
+# #!/bin/bash
 # Start ssh server
 service ssh restart 
 
-# Starting the services
+# echo "Starting the services"
 bash start-services.sh
 
-# Creating a virtual environment
+# echo "Creating a virtual environment"
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install any packages
+# echo "Installing packages"
 pip install -r requirements.txt  
 
-# Package the virtual env.
+# # Package the virtual env.
 venv-pack -o .venv.tar.gz
 
-# Collect data
+# # Building Cassandra
+echo "Building Cassandra"
+python app.py
+
+# Collect Data
+echo "Collecting data"
 bash prepare_data.sh
 
-
 # Run the indexer
+echo "Indexing data"
 bash index.sh data/sample.txt
 
-# Run the ranker
-bash search.sh "this is a query!"
+# # Run the ranker
+# echo "Running the ranker"
+# bash search.sh "this is a query!"

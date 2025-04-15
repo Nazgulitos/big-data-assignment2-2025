@@ -43,10 +43,15 @@ services:
     image: cassandra
     container_name: cassandra-server
     ports:
-      - "7000:7000"
+      - "7001:7000"
+    volumes:
+      - "./app:/app"
     networks:
       - spark-cluster
-    
+    # environment:
+    #   - CASSANDRA_CLUSTER_NAME=search_cluster
+    #   - CASSANDRA_DC=datacenter1
+    #   - CASSANDRA_RACK=rack1
 
 networks:
   spark-cluster:
