@@ -8,7 +8,14 @@ def tokenize(text):
     return words
 
 def main():
+    # Limit the number of documents to process
+    LIMIT = 100
+    counter = 0
+
     for line in sys.stdin:
+        if counter >= LIMIT:
+            break
+
         # Parse input line (id\ttitle\tcontent)
         doc_id, title, content = line.strip().split('\t', 2)
         
@@ -35,6 +42,9 @@ def main():
         for term, freq in term_freq.items():
             positions = term_positions[term]
             print(f"{term}\t{doc_id}\t{freq}\t{','.join(map(str, positions))}")
+        
+        # Increment the counter
+        counter += 1
 
 if __name__ == "__main__":
     main()

@@ -1,44 +1,59 @@
-# Default input path in HDFS
-STAGE_1_INPUT="/index/data/part-*"
+#!/bin/bash
 
-# Create directories if they don't exist
-hdfs dfs -mkdir -p /tmp/index/input
-hdfs dfs -mkdir -p /tmp/index/stage1
-hdfs dfs -mkdir -p /tmp/index/stage2
+# Ensure cassandra_lib.zip exists
+if [[ ! -f cassandra_lib.zip ]]; then
+    mkdir -p cassandra_lib
+    pip install cassandra-driver -t cassandra_lib
+    (cd cassandra_lib && zip -qr ../cassandra_lib.zip .)
+    rm -rf cassandra_lib
+fi
 
-# List input directory
-echo "Checking input directory:"
-hdfs dfs -ls /tmp/index/input
+# Activate the virtual environment
+source .venv/bin/activate
 
-# Stage 1
-hadoop jar $HADOOP_HOME/share/hadoop/tools/lib/hadoop-streaming-*.jar \
-  -files /app/mapreduce/mapper1.py,/app/mapreduce/reducer1.py \
-  -archives /app/.venv.tar.gz#.venv \
-  -D mapreduce.framework.name=yarn \
-  -mapper ".venv/bin/python mapper1.py" \
-  -reducer ".venv/bin/python reducer1.py 2> reducer.log" \
-  -input "$STAGE_1_INPUT" \
-  -output /tmp/index/stage1 \
-  -numReduceTasks 1
+# Remove any existing HDFS output directory
+hdfs dfs -rm -r -f /tmp/index || true
 
-# Check stage 1 output
-hdfs dfs -ls /tmp/index/stage1
-hdfs dfs -cat /tmp/index/stage1/part-*
+# Stage 1: Run the first MapReduce job
+echo "Stage 1: Running MapReduce job for term frequency calculation"
+hadoop jar $(find /usr/lib /opt /usr/local -name hadoop-streaming*.jar 2>/dev/null | head -n 1) \
+    -input ${1:-/index/data} \
+    -output /tmp/index \
+    -mapper mapreduce/mapper1.py \
+    -reducer mapreduce/reducer1.py \
+    -file mapreduce/mapper1.py \
+    -file mapreduce/reducer1.py \
+    -file cassandra_lib.zip
 
-# Stage 2 
-echo "Stage 2"
-hadoop jar $HADOOP_HOME/share/hadoop/tools/lib/hadoop-streaming-*.jar \
-  -files /app/mapreduce/mapper2.py,/app/mapreduce/reducer2.py \
-  -archives /app/.venv.tar.gz#.venv \
-  -D mapreduce.framework.name=yarn \
-  -mapper ".venv/bin/python mapper2.py" \
-  -reducer ".venv/bin/python reducer2.py" \
-  -input /tmp/index/stage1/part-* \
-  -output /tmp/index/stage2 \
-  -numReduceTasks 1
+# Check Stage 1 output
+echo "Checking Stage 1 output..."
+hdfs dfs -ls /tmp/index
+hdfs dfs -cat /tmp/index/part-00000 | head -n 10
 
-# Check final output
-hdfs dfs -ls /tmp/index/stage2
-hdfs dfs -cat /tmp/index/stage2/part-*
+# Stage 2: Run the second MapReduce job for document frequency calculation
+echo "Stage 2: Running MapReduce job for document frequency calculation"
+hdfs dfs -rm -r -f /tmp/index_stage2 || true
+hadoop jar $(find /usr/lib /opt /usr/local -name hadoop-streaming*.jar 2>/dev/null | head -n 1) \
+    -input /tmp/index \
+    -output /tmp/index_stage2 \
+    -mapper mapreduce/mapper2.py \
+    -reducer mapreduce/reducer2.py \
+    -file mapreduce/mapper2.py \
+    -file mapreduce/reducer2.py \
+    -file cassandra_lib.zip
+
+# Check Stage 2 output
+echo "Checking Stage 2 output..."
+hdfs dfs -ls /tmp/index_stage2
+hdfs dfs -cat /tmp/index_stage2/part-00000 | head -n 10
+
+# Final Step: Insert data into Cassandra
+echo "Inserting data into Cassandra..."
+python3 app.py
+
+# Verify final output in Cassandra
+echo "Verifying data in Cassandra..."
+cqlsh -e "USE search_index; SELECT * FROM vocabulary LIMIT 10;"
+cqlsh -e "USE search_index; SELECT * FROM document_index LIMIT 10;"
 
 echo "Indexing completed successfully!"

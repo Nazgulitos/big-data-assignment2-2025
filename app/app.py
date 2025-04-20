@@ -56,5 +56,5 @@ session.execute("""
 
 print("Keyspace and tables created successfully!")
 
-# Close the connection
-session.shutdown()
+# # Close the connection
+# session.shutdown()
